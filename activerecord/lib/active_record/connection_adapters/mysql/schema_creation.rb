@@ -2,6 +2,9 @@ module ActiveRecord
   module ConnectionAdapters
     module MySQL
       class SchemaCreation < AbstractAdapter::SchemaCreation
+        delegate :quote, to: :@conn
+        private :quote
+
         private
 
         def visit_DropForeignKey(name)
@@ -22,6 +25,14 @@ module ActiveRecord
           add_column_position!(change_column_sql, column_options(o.column))
         end
 
+        def add_table_options!(create_sql, options)
+          super
+
+          if comment = options[:comment]
+            create_sql << " COMMENT #{quote(comment)}"
+          end
+        end
+
         def column_options(o)
           column_options = super
           column_options[:charset] = o.charset
@@ -29,13 +40,21 @@ module ActiveRecord
         end
 
         def add_column_options!(sql, options)
-          if options[:charset]
-            sql << " CHARACTER SET #{options[:charset]}"
+          if charset = options[:charset]
+            sql << " CHARACTER SET #{charset}"
           end
-          if options[:collation]
-            sql << " COLLATE #{options[:collation]}"
+
+          if collation = options[:collation]
+            sql << " COLLATE #{collation}"
           end
+
           super
+
+          if comment = options[:comment]
+            sql << " COMMENT #{quote(comment)}"
+          end
+
+          sql
         end
 
         def add_column_position!(sql, options)
@@ -44,12 +63,14 @@ module ActiveRecord
           elsif options[:after]
             sql << " AFTER #{quote_column_name(options[:after])}"
           end
+
           sql
         end
 
         def index_in_create(table_name, column_name, options)
-          index_name, index_type, index_columns, _, _, index_using = @conn.add_index_options(table_name, column_name, options)
-          "#{index_type} INDEX #{quote_column_name(index_name)} #{index_using} (#{index_columns}) "
+          index_name, index_type, index_columns, _, _, index_using, comment = @conn.add_index_options(table_name, column_name, options)
+          index_option = " COMMENT #{quote(comment)}" if comment
+          "#{index_type} INDEX #{quote_column_name(index_name)} #{index_using} (#{index_columns})#{index_option} "
         end
       end
     end

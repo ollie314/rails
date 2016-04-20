@@ -24,6 +24,10 @@ module ActiveRecord
         MySQL::SchemaCreation.new(self)
       end
 
+      def arel_visitor # :nodoc:
+        Arel::Visitors::MySQL.new(self)
+      end
+
       ##
       # :singleton-method:
       # By default, the Mysql2Adapter will consider all columns of type <tt>tinyint(1)</tt>
@@ -55,15 +59,6 @@ module ActiveRecord
       def initialize(connection, logger, connection_options, config)
         super(connection, logger, config)
 
-        @visitor = Arel::Visitors::MySQL.new self
-
-        if self.class.type_cast_config_to_boolean(config.fetch(:prepared_statements) { true })
-          @prepared_statements = true
-          @visitor.extend(DetermineIfPreparableVisitor)
-        else
-          @prepared_statements = false
-        end
-
         if version < '5.0.0'
           raise "Your version of MySQL (#{full_version.match(/^\d+\.\d+\.\d+/)[0]}) is too old. Active Record supports MySQL >= 5.0."
         end
@@ -77,8 +72,12 @@ module ActiveRecord
         }
       end
 
-      def version
+      def version #:nodoc:
         @version ||= Version.new(full_version.match(/^\d+\.\d+\.\d+/)[0])
+      end
+
+      def mariadb? # :nodoc:
+        full_version =~ /mariadb/i
       end
 
       # Returns true, since this connection adapter supports migrations.
@@ -156,8 +155,8 @@ module ActiveRecord
         raise NotImplementedError
       end
 
-      def new_column(field, default, sql_type_metadata, null, table_name, default_function = nil, collation = nil) # :nodoc:
-        MySQL::Column.new(field, default, sql_type_metadata, null, table_name, default_function, collation)
+      def new_column(*args) #:nodoc:
+        MySQL::Column.new(*args)
       end
 
       # Must return the MySQL error number from the exception, if the exception has an
@@ -331,8 +330,7 @@ module ActiveRecord
       def data_source_exists?(table_name)
         return false unless table_name.present?
 
-        schema, name = table_name.to_s.split('.', 2)
-        schema, name = @config[:database], schema unless name # A table was provided without a schema
+        schema, name = extract_schema_qualified_name(table_name)
 
         sql = "SELECT table_name FROM information_schema.tables "
         sql << "WHERE table_schema = #{quote(schema)} AND table_name = #{quote(name)}"
@@ -347,8 +345,7 @@ module ActiveRecord
       def view_exists?(view_name) # :nodoc:
         return false unless view_name.present?
 
-        schema, name = view_name.to_s.split('.', 2)
-        schema, name = @config[:database], schema unless name # A view was provided without a schema
+        schema, name = extract_schema_qualified_name(view_name)
 
         sql = "SELECT table_name FROM information_schema.tables WHERE table_type = 'VIEW'"
         sql << " AND table_schema = #{quote(schema)} AND table_name = #{quote(name)}"
@@ -369,7 +366,7 @@ module ActiveRecord
               mysql_index_type = row[:Index_type].downcase.to_sym
               index_type  = INDEX_TYPES.include?(mysql_index_type)  ? mysql_index_type : nil
               index_using = INDEX_USINGS.include?(mysql_index_type) ? mysql_index_type : nil
-              indexes << IndexDefinition.new(row[:Table], row[:Key_name], row[:Non_unique].to_i == 0, [], [], nil, nil, index_type, index_using)
+              indexes << IndexDefinition.new(row[:Table], row[:Key_name], row[:Non_unique].to_i == 0, [], [], nil, nil, index_type, index_using, row[:Index_comment].presence)
             end
 
             indexes.last.columns << row[:Column_name]
@@ -390,12 +387,20 @@ module ActiveRecord
           else
             default, default_function = field[:Default], nil
           end
-          new_column(field[:Field], default, type_metadata, field[:Null] == "YES", table_name, default_function, field[:Collation])
+          new_column(field[:Field], default, type_metadata, field[:Null] == "YES", table_name, default_function, field[:Collation], comment: field[:Comment].presence)
         end
       end
 
-      def create_table(table_name, options = {}) #:nodoc:
-        super(table_name, options.reverse_merge(:options => "ENGINE=InnoDB"))
+      def table_comment(table_name) # :nodoc:
+        select_value(<<-SQL.strip_heredoc, 'SCHEMA')
+          SELECT table_comment
+          FROM information_schema.tables
+          WHERE table_name=#{quote(table_name)}
+        SQL
+      end
+
+      def create_table(table_name, **options) #:nodoc:
+        super(table_name, options: 'ENGINE=InnoDB', **options)
       end
 
       def bulk_change_table(table_name, operations) #:nodoc:
@@ -478,11 +483,17 @@ module ActiveRecord
       end
 
       def add_index(table_name, column_name, options = {}) #:nodoc:
-        index_name, index_type, index_columns, _, index_algorithm, index_using = add_index_options(table_name, column_name, options)
-        execute "CREATE #{index_type} INDEX #{quote_column_name(index_name)} #{index_using} ON #{quote_table_name(table_name)} (#{index_columns}) #{index_algorithm}"
+        index_name, index_type, index_columns, _, index_algorithm, index_using, comment = add_index_options(table_name, column_name, options)
+        sql = "CREATE #{index_type} INDEX #{quote_column_name(index_name)} #{index_using} ON #{quote_table_name(table_name)} (#{index_columns}) #{index_algorithm}"
+        sql << " COMMENT #{quote(comment)}" if comment
+        execute sql
       end
 
       def foreign_keys(table_name)
+        raise ArgumentError unless table_name.present?
+
+        schema, name = extract_schema_qualified_name(table_name)
+
         fk_info = select_all <<-SQL.strip_heredoc
           SELECT fk.referenced_table_name as 'to_table'
                 ,fk.referenced_column_name as 'primary_key'
@@ -490,8 +501,8 @@ module ActiveRecord
                 ,fk.constraint_name as 'name'
           FROM information_schema.key_column_usage fk
           WHERE fk.referenced_column_name is not null
-            AND fk.table_schema = '#{@config[:database]}'
-            AND fk.table_name = '#{table_name}'
+            AND fk.table_schema = #{quote(schema)}
+            AND fk.table_name = #{quote(name)}
         SQL
 
         create_table_info = create_table_info(table_name)
@@ -517,7 +528,12 @@ module ActiveRecord
         raw_table_options = create_table_info.sub(/\A.*\n\) /m, '').sub(/\n\/\*!.*\*\/\n\z/m, '').strip
 
         # strip AUTO_INCREMENT
-        raw_table_options.sub(/(ENGINE=\w+)(?: AUTO_INCREMENT=\d+)/, '\1')
+        raw_table_options.sub!(/(ENGINE=\w+)(?: AUTO_INCREMENT=\d+)/, '\1')
+
+        # strip COMMENT
+        raw_table_options.sub!(/ COMMENT='.+'/, '')
+
+        raw_table_options
       end
 
       # Maps logical Rails types to MySQL-specific data types.
@@ -553,8 +569,7 @@ module ActiveRecord
       def primary_keys(table_name) # :nodoc:
         raise ArgumentError unless table_name.present?
 
-        schema, name = table_name.to_s.split('.', 2)
-        schema, name = @config[:database], schema unless name # A table was provided without a schema
+        schema, name = extract_schema_qualified_name(table_name)
 
         select_values(<<-SQL.strip_heredoc, 'SCHEMA')
           SELECT column_name
@@ -697,6 +712,8 @@ module ActiveRecord
           RecordNotUnique.new(message)
         when 1452
           InvalidForeignKey.new(message)
+        when 1406
+          ValueTooLong.new(message)
         else
           super
         end
@@ -782,10 +799,6 @@ module ActiveRecord
         subselect.from subsubselect.as('__active_record_temp')
       end
 
-      def mariadb?
-        full_version =~ /mariadb/i
-      end
-
       def supports_rename_index?
         mariadb? ? false : version >= '5.7.6'
       end
@@ -866,8 +879,14 @@ module ActiveRecord
         create_table_info_cache[table_name] ||= select_one("SHOW CREATE TABLE #{quote_table_name(table_name)}")["Create Table"]
       end
 
-      def create_table_definition(name, temporary = false, options = nil, as = nil) # :nodoc:
-        MySQL::TableDefinition.new(name, temporary, options, as)
+      def create_table_definition(*args) # :nodoc:
+        MySQL::TableDefinition.new(*args)
+      end
+
+      def extract_schema_qualified_name(string) # :nodoc:
+        schema, name = string.to_s.scan(/[^`.\s]+|`[^`]*`/)
+        schema, name = @config[:database], schema unless name
+        [schema, name]
       end
 
       def integer_to_sql(limit) # :nodoc:

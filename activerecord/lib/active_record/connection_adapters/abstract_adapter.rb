@@ -104,9 +104,15 @@ module ActiveRecord
         @config              = config
         @pool                = nil
         @schema_cache        = SchemaCache.new self
-        @visitor             = nil
-        @prepared_statements = false
         @quoted_column_names, @quoted_table_names = {}, {}
+        @visitor             = arel_visitor
+
+        if self.class.type_cast_config_to_boolean(config.fetch(:prepared_statements) { true })
+          @prepared_statements = true
+          @visitor.extend(DetermineIfPreparableVisitor)
+        else
+          @prepared_statements = false
+        end
       end
 
       class Version
@@ -140,6 +146,10 @@ module ActiveRecord
         else
           BindCollector.new
         end
+      end
+
+      def arel_visitor # :nodoc:
+        Arel::Visitors::ToSql.new(self)
       end
 
       def valid_type?(type)
@@ -275,6 +285,16 @@ module ActiveRecord
 
       # Does this adapter support json data type?
       def supports_json?
+        false
+      end
+
+      # Does this adapter support metadata comments on database objects (tables, columns, indexes)?
+      def supports_comments?
+        false
+      end
+
+      # Can comments for tables, columns, and indexes be specified in create/alter table statements?
+      def supports_comments_in_create?
         false
       end
 

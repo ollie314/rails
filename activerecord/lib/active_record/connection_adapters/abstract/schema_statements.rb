@@ -18,6 +18,11 @@ module ActiveRecord
         nil
       end
 
+      # Returns the table comment that's stored in database metadata.
+      def table_comment(table_name)
+        nil
+      end
+
       # Truncates a table alias according to the limits of the current adapter.
       def table_alias_for(table_name)
         table_name[0...table_alias_length].tr('.', '_')
@@ -254,8 +259,8 @@ module ActiveRecord
       #     SELECT * FROM orders INNER JOIN line_items ON order_id=orders.id
       #
       # See also TableDefinition#column for details on how to create columns.
-      def create_table(table_name, options = {})
-        td = create_table_definition table_name, options[:temporary], options[:options], options[:as]
+      def create_table(table_name, comment: nil, **options)
+        td = create_table_definition table_name, options[:temporary], options[:options], options[:as], comment: comment
 
         if options[:id] != false && !options[:as]
           pk = options.fetch(:primary_key) do
@@ -280,6 +285,14 @@ module ActiveRecord
         unless supports_indexes_in_create?
           td.indexes.each_pair do |column_name, index_options|
             add_index(table_name, column_name, index_options)
+          end
+        end
+
+        if supports_comments? && !supports_comments_in_create?
+          change_table_comment(table_name, comment) if comment
+
+          td.columns.each do |column|
+            change_column_comment(table_name, column.name, column.comment) if column.comment
           end
         end
 
@@ -776,7 +789,8 @@ module ActiveRecord
       # [<tt>:type</tt>]
       #   The reference column type. Defaults to +:integer+.
       # [<tt>:index</tt>]
-      #   Add an appropriate index. Defaults to false.
+      #   Add an appropriate index. Defaults to false.  
+      #   See #add_index for usage of this option.
       # [<tt>:foreign_key</tt>]
       #   Add an appropriate foreign key constraint. Defaults to false.
       # [<tt>:polymorphic</tt>]
@@ -795,6 +809,14 @@ module ActiveRecord
       # ====== Create supplier_id, supplier_type columns and appropriate index
       #
       #   add_reference(:products, :supplier, polymorphic: true, index: true)
+      #
+      # ====== Create a supplier_id column with a unique index
+      #
+      #   add_reference(:products, :supplier, index: { unique: true })
+      #
+      # ====== Create a supplier_id column with a named index
+      #
+      #   add_reference(:products, :supplier, index: { name: "my_supplier_index" })
       #
       # ====== Create a supplier_id column and appropriate foreign key
       #
@@ -1075,7 +1097,7 @@ module ActiveRecord
         Table.new(table_name, base)
       end
 
-      def add_index_options(table_name, column_name, options = {}) #:nodoc:
+      def add_index_options(table_name, column_name, comment: nil, **options) #:nodoc:
         column_names = Array(column_name)
 
         options.assert_valid_keys(:unique, :order, :name, :where, :length, :internal, :using, :algorithm, :type)
@@ -1106,11 +1128,21 @@ module ActiveRecord
         end
         index_columns = quoted_columns_for_index(column_names, options).join(", ")
 
-        [index_name, index_type, index_columns, index_options, algorithm, using]
+        [index_name, index_type, index_columns, index_options, algorithm, using, comment]
       end
 
       def options_include_default?(options)
         options.include?(:default) && !(options[:null] == false && options[:default].nil?)
+      end
+
+      # Changes the comment for a table or removes it if +nil+.
+      def change_table_comment(table_name, comment)
+        raise NotImplementedError, "#{self.class} does not support changing table comments"
+      end
+
+      # Changes the comment for a column or removes it if +nil+.
+      def change_column_comment(table_name, column_name, comment) #:nodoc:
+        raise NotImplementedError, "#{self.class} does not support changing column comments"
       end
 
       protected
@@ -1194,8 +1226,8 @@ module ActiveRecord
         end
 
       private
-      def create_table_definition(name, temporary = false, options = nil, as = nil)
-        TableDefinition.new(name, temporary, options, as)
+      def create_table_definition(*args)
+        TableDefinition.new(*args)
       end
 
       def create_alter_table(name)
