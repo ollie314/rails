@@ -5,7 +5,6 @@ if ActiveRecord::Base.connection.supports_comments?
 
 class CommentTest < ActiveRecord::TestCase
   include SchemaDumpingHelper
-  self.use_transactional_tests = false if current_adapter?(:Mysql2Adapter)
 
   class Commented < ActiveRecord::Base
     self.table_name = 'commenteds'
@@ -29,6 +28,10 @@ class CommentTest < ActiveRecord::TestCase
       t.string :empty_comment, comment: ''
       t.string :nil_comment, comment: nil
       t.string :absent_comment
+      t.index :space_comment, comment: ' '
+      t.index :empty_comment, comment: ''
+      t.index :nil_comment, comment: nil
+      t.index :absent_comment
     end
 
     Commented.reset_column_information
@@ -51,6 +54,12 @@ class CommentTest < ActiveRecord::TestCase
       column = BlankComment.columns_hash[field]
       assert_equal :string, column.type
       assert_nil column.comment
+    end
+  end
+
+  def test_blank_indexes_created_in_block
+    @connection.indexes('blank_comments').each do |index|
+      assert_nil index.comment
     end
   end
 
@@ -103,8 +112,8 @@ class CommentTest < ActiveRecord::TestCase
     assert_match %r[t\.string\s+"obvious"\n], output
     assert_match %r[t\.string\s+"content",\s+comment: "Whoa, content describes itself!"], output
     assert_match %r[t\.integer\s+"rating",\s+comment: "I am running out of imagination"], output
-    assert_match %r[add_index\s+.+\s+comment: "\\\"Very important\\\" index that powers all the performance.\\nAnd it's fun!"], output
-    assert_match %r[add_index\s+.+\s+name: "idx_obvious",.+\s+comment: "We need to see obvious comments"], output
+    assert_match %r[t\.index\s+.+\s+comment: "\\\"Very important\\\" index that powers all the performance.\\nAnd it's fun!"], output
+    assert_match %r[t\.index\s+.+\s+name: "idx_obvious",.+\s+comment: "We need to see obvious comments"], output
   end
 
   def test_schema_dump_omits_blank_comments
