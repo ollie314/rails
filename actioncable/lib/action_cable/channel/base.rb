@@ -1,4 +1,4 @@
-require 'set'
+require "set"
 
 module ActionCable
   module Channel
@@ -177,7 +177,6 @@ module ActionCable
         end
       end
 
-
       protected
         # Called once a consumer has become a subscriber of the channel. Usually the place to setup any streams
         # you want this channel to be sending to the subscriber.
@@ -244,11 +243,11 @@ module ActionCable
         end
 
         def extract_action(data)
-          (data['action'].presence || :receive).to_sym
+          (data["action"].presence || :receive).to_sym
         end
 
         def processable_action?(action)
-          self.class.action_methods.include?(action.to_s)
+          self.class.action_methods.include?(action.to_s) unless subscription_rejected?
         end
 
         def dispatch_action(action, data)
@@ -263,7 +262,7 @@ module ActionCable
 
         def action_signature(action, data)
           "#{self.class.name}##{action}".tap do |signature|
-            if (arguments = data.except('action')).any?
+            if (arguments = data.except("action")).any?
               signature << "(#{arguments.inspect})"
             end
           end

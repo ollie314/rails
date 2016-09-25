@@ -329,26 +329,20 @@ module ActiveRecord
         return true if record.destroyed? || (reflection.options[:autosave] && record.marked_for_destruction?)
 
         validation_context = self.validation_context unless [:create, :update].include?(self.validation_context)
+
         unless valid = record.valid?(validation_context)
           if reflection.options[:autosave]
             indexed_attribute = !index.nil? && (reflection.options[:index_errors] || ActiveRecord::Base.index_nested_attribute_errors)
 
             record.errors.each do |attribute, message|
-              if indexed_attribute
-                attribute = "#{reflection.name}[#{index}].#{attribute}"
-              else
-                attribute = "#{reflection.name}.#{attribute}"
-              end
+              attribute = normalize_reflection_attribute(indexed_attribute, reflection, index, attribute)
               errors[attribute] << message
               errors[attribute].uniq!
             end
 
             record.errors.details.each_key do |attribute|
-              if indexed_attribute
-                reflection_attribute = "#{reflection.name}[#{index}].#{attribute}"
-              else
-                reflection_attribute = "#{reflection.name}.#{attribute}"
-              end
+              reflection_attribute =
+                normalize_reflection_attribute(indexed_attribute, reflection, index, attribute).to_sym
 
               record.errors.details[attribute].each do |error|
                 errors.details[reflection_attribute] << error
@@ -360,6 +354,14 @@ module ActiveRecord
           end
         end
         valid
+      end
+
+      def normalize_reflection_attribute(indexed_attribute, reflection, index, attribute)
+        if indexed_attribute
+          "#{reflection.name}[#{index}].#{attribute}"
+        else
+          "#{reflection.name}.#{attribute}"
+        end
       end
 
       # Is used as a before_save callback to check while saving a collection
@@ -400,7 +402,7 @@ module ActiveRecord
                   association.insert_record(record) unless reflection.nested?
                 end
               elsif autosave
-                saved = record.save(:validate => false)
+                saved = record.save(validate: false)
               end
 
               raise ActiveRecord::Rollback unless saved
@@ -437,7 +439,7 @@ module ActiveRecord
                 record[reflection.foreign_key] = key
               end
 
-              saved = record.save(:validate => !autosave)
+              saved = record.save(validate: !autosave)
               raise ActiveRecord::Rollback if !saved && autosave
               saved
             end
@@ -457,7 +459,9 @@ module ActiveRecord
       # In addition, it will destroy the association if it was marked for destruction.
       def save_belongs_to_association(reflection)
         association = association_instance_get(reflection.name)
-        record      = association && association.load_target
+        return unless association && association.loaded? && !association.stale_target?
+
+        record = association.load_target
         if record && !record.destroyed?
           autosave = reflection.options[:autosave]
 
@@ -465,7 +469,7 @@ module ActiveRecord
             self[reflection.foreign_key] = nil
             record.destroy
           elsif autosave != false
-            saved = record.save(:validate => !autosave) if record.new_record? || (autosave && record.changed_for_autosave?)
+            saved = record.save(validate: !autosave) if record.new_record? || (autosave && record.changed_for_autosave?)
 
             if association.updated?
               association_id = record.send(reflection.options[:primary_key] || :id)

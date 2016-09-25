@@ -1,4 +1,4 @@
-require 'active_support/core_ext/array/wrap'
+require "active_support/core_ext/array/wrap"
 
 module ActiveRecord
   module Associations
@@ -19,7 +19,7 @@ module ActiveRecord
       attr_reader :owner, :target, :reflection
       attr_accessor :inversed
 
-      delegate :options, :to => :reflection
+      delegate :options, to: :reflection
 
       def initialize(owner, reflection)
         reflection.check_validity!
@@ -171,6 +171,14 @@ module ActiveRecord
         attributes = create_scope.except(*(assigned_keys - skip_assign))
         record.assign_attributes(attributes)
         set_inverse_instance(record)
+      end
+
+      def create(attributes = {}, &block)
+        _create_record(attributes, &block)
+      end
+
+      def create!(attributes = {}, &block)
+        _create_record(attributes, true, &block)
       end
 
       private

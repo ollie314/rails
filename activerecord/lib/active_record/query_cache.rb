@@ -5,7 +5,7 @@ module ActiveRecord
       # Enable the query cache within the block if Active Record is configured.
       # If it's not, it will execute the given block.
       def cache(&block)
-        if ActiveRecord::Base.connected?
+        if connected?
           connection.cache(&block)
         else
           yield
@@ -15,7 +15,7 @@ module ActiveRecord
       # Disable the query cache within the block if Active Record is configured.
       # If it's not, it will execute the given block.
       def uncached(&block)
-        if ActiveRecord::Base.connected?
+        if connected?
           connection.uncached(&block)
         else
           yield
@@ -26,16 +26,12 @@ module ActiveRecord
     def self.run
       connection    = ActiveRecord::Base.connection
       enabled       = connection.query_cache_enabled
-      connection_id = ActiveRecord::Base.connection_id
       connection.enable_query_cache!
 
-      [enabled, connection_id]
+      enabled
     end
 
-    def self.complete(state)
-      enabled, connection_id = state
-
-      ActiveRecord::Base.connection_id = connection_id
+    def self.complete(enabled)
       ActiveRecord::Base.connection.clear_query_cache
       ActiveRecord::Base.connection.disable_query_cache! unless enabled
     end
@@ -44,7 +40,7 @@ module ActiveRecord
       executor.register_hook(self)
 
       executor.to_complete do
-        unless ActiveRecord::Base.connection.transaction_open?
+        unless ActiveRecord::Base.connected? && ActiveRecord::Base.connection.transaction_open?
           ActiveRecord::Base.clear_active_connections!
         end
       end

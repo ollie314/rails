@@ -1,5 +1,5 @@
-require 'active_support/core_ext/string/filters'
-require 'active_support/core_ext/array/extract_options'
+require "active_support/core_ext/string/filters"
+require "active_support/core_ext/array/extract_options"
 
 module ActionView
   # = Action View Text Helpers
@@ -135,7 +135,7 @@ module ActionView
         else
           match = Array(phrases).map do |p|
             Regexp === p ? p.to_s : Regexp.escape(p)
-          end.join('|')
+          end.join("|")
 
           if block_given?
             text.gsub(/(#{match})(?![^<]*?>)/i) { |found| yield found }
@@ -269,10 +269,11 @@ module ActionView
       end
 
       # Returns +text+ transformed into HTML using simple formatting rules.
-      # Two or more consecutive newlines(<tt>\n\n</tt>) are considered as a
-      # paragraph and wrapped in <tt><p></tt> tags. One newline (<tt>\n</tt>) is
-      # considered as a linebreak and a <tt><br /></tt> tag is appended. This
-      # method does not remove the newlines from the +text+.
+      # Two or more consecutive newlines(<tt>\n\n</tt> or <tt>\r\n\r\n</tt>) are
+      # considered a paragraph and wrapped in <tt><p></tt> tags. One newline
+      # (<tt>\n</tt> or <tt>\r\n</tt>) is considered a linebreak and a
+      # <tt><br /></tt> tag is appended. This method does not remove the
+      # newlines from the +text+.
       #
       # You can pass any HTML attributes into <tt>html_options</tt>. These
       # will be added to all created paragraphs.
@@ -357,7 +358,7 @@ module ActionView
       #  <% end %>
       def cycle(first_value, *values)
         options = values.extract_options!
-        name = options.fetch(:name, 'default')
+        name = options.fetch(:name, "default")
 
         values.unshift(*first_value)
 
@@ -431,17 +432,17 @@ module ActionView
 
         private
 
-        def next_index
-          step_index(1)
-        end
+          def next_index
+            step_index(1)
+          end
 
-        def previous_index
-          step_index(-1)
-        end
+          def previous_index
+            step_index(-1)
+          end
 
-        def step_index(n)
-          (@index + n) % @values.size
-        end
+          def step_index(n)
+            (@index + n) % @values.size
+          end
       end
 
       private

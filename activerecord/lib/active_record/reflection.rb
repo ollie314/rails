@@ -1,5 +1,5 @@
-require 'thread'
-require 'active_support/core_ext/string/filters'
+require "thread"
+require "active_support/core_ext/string/filters"
 
 module ActiveRecord
   # = Active Record Reflection
@@ -14,18 +14,19 @@ module ActiveRecord
     end
 
     def self.create(macro, name, scope, options, ar)
-      klass = case macro
-              when :composed_of
-                AggregateReflection
-              when :has_many
-                HasManyReflection
-              when :has_one
-                HasOneReflection
-              when :belongs_to
-                BelongsToReflection
-              else
-                raise "Unsupported Macro: #{macro}"
-              end
+      klass = \
+        case macro
+        when :composed_of
+          AggregateReflection
+        when :has_many
+          HasManyReflection
+        when :has_one
+          HasOneReflection
+        when :belongs_to
+          BelongsToReflection
+        else
+          raise "Unsupported Macro: #{macro}"
+        end
 
       reflection = klass.new(name, scope, options, ar)
       options[:through] ? ThroughReflection.new(reflection) : reflection
@@ -311,12 +312,15 @@ module ActiveRecord
           active_record == other_aggregation.active_record
       end
 
+      def scope_for(klass)
+        scope ? klass.unscoped.instance_exec(nil, &scope) : klass.unscoped
+      end
+
       private
         def derive_class_name
           name.to_s.camelize
         end
     end
-
 
     # Holds all the meta-data about an aggregation as it was specified in the
     # Active Record class.
@@ -700,7 +704,7 @@ module ActiveRecord
     class ThroughReflection < AbstractReflection #:nodoc:
       attr_reader :delegate_reflection
       delegate :foreign_key, :foreign_type, :association_foreign_key,
-               :active_record_primary_key, :type, :to => :source_reflection
+               :active_record_primary_key, :type, to: :source_reflection
 
       def initialize(delegate_reflection)
         @delegate_reflection = delegate_reflection
@@ -978,7 +982,6 @@ module ActiveRecord
           public_instance_methods
 
         delegate(*delegate_methods, to: :delegate_reflection)
-
     end
 
     class PolymorphicReflection < ThroughReflection # :nodoc:

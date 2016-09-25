@@ -29,45 +29,45 @@ class ErrorsTest < ActiveModel::TestCase
 
   def test_delete
     errors = ActiveModel::Errors.new(self)
-    errors[:foo] << 'omg'
+    errors[:foo] << "omg"
     errors.delete(:foo)
     assert_empty errors[:foo]
   end
 
   def test_include?
     errors = ActiveModel::Errors.new(self)
-    errors[:foo] << 'omg'
-    assert errors.include?(:foo), 'errors should include :foo'
+    errors[:foo] << "omg"
+    assert_includes errors, :foo, "errors should include :foo"
   end
 
   def test_dup
     errors = ActiveModel::Errors.new(self)
-    errors[:foo] << 'bar'
+    errors[:foo] << "bar"
     errors_dup = errors.dup
-    errors_dup[:bar] << 'omg'
+    errors_dup[:bar] << "omg"
     assert_not_same errors_dup.messages, errors.messages
   end
 
   def test_has_key?
     errors = ActiveModel::Errors.new(self)
-    errors[:foo] << 'omg'
-    assert_equal true, errors.has_key?(:foo), 'errors should have key :foo'
+    errors[:foo] << "omg"
+    assert_equal true, errors.has_key?(:foo), "errors should have key :foo"
   end
 
   def test_has_no_key
     errors = ActiveModel::Errors.new(self)
-    assert_equal false, errors.has_key?(:name), 'errors should not have key :name'
+    assert_equal false, errors.has_key?(:name), "errors should not have key :name"
   end
 
   def test_key?
     errors = ActiveModel::Errors.new(self)
-    errors[:foo] << 'omg'
-    assert_equal true, errors.key?(:foo), 'errors should have key :foo'
+    errors[:foo] << "omg"
+    assert_equal true, errors.key?(:foo), "errors should have key :foo"
   end
 
   def test_no_key
     errors = ActiveModel::Errors.new(self)
-    assert_equal false, errors.key?(:name), 'errors should not have key :name'
+    assert_equal false, errors.key?(:name), "errors should not have key :name"
   end
 
   test "clear errors" do
@@ -125,7 +125,7 @@ class ErrorsTest < ActiveModel::TestCase
     person.errors[:foo]
     assert person.errors.empty?
     assert person.errors.blank?
-    assert !person.errors.include?(:foo)
+    assert_not_includes person.errors, :foo
   end
 
   test "include? does not add a key to messages hash" do
@@ -145,7 +145,7 @@ class ErrorsTest < ActiveModel::TestCase
   test "assign error" do
     person = Person.new
     assert_deprecated do
-      person.errors[:name] = 'should not be nil'
+      person.errors[:name] = "should not be nil"
     end
     assert_equal ["should not be nil"], person.errors[:name]
   end
@@ -217,6 +217,12 @@ class ErrorsTest < ActiveModel::TestCase
     person = Person.new
     person.errors.add(:name, "is invalid")
     assert !person.errors.added?(:name, "cannot be blank")
+  end
+
+  test "added? returns false when checking for an error, but not providing message arguments" do
+    person = Person.new
+    person.errors.add(:name, "cannot be blank")
+    assert !person.errors.added?(:name)
   end
 
   test "size calculates the number of error messages" do
@@ -325,16 +331,16 @@ class ErrorsTest < ActiveModel::TestCase
 
   test "add_on_empty generates message with custom default message" do
     person = Person.new
-    assert_called_with(person.errors, :generate_message, [:name, :empty, { message: 'custom' }]) do
+    assert_called_with(person.errors, :generate_message, [:name, :empty, { message: "custom" }]) do
       assert_deprecated do
-        person.errors.add_on_empty :name, message: 'custom'
+        person.errors.add_on_empty :name, message: "custom"
       end
     end
   end
 
   test "add_on_empty generates message with empty string value" do
     person = Person.new
-    person.name = ''
+    person.name = ""
     assert_called_with(person.errors, :generate_message, [:name, :empty, {}]) do
       assert_deprecated do
         person.errors.add_on_empty :name
@@ -363,9 +369,9 @@ class ErrorsTest < ActiveModel::TestCase
 
   test "add_on_blank generates message with custom default message" do
     person = Person.new
-    assert_called_with(person.errors, :generate_message, [:name, :blank, { message: 'custom' }]) do
+    assert_called_with(person.errors, :generate_message, [:name, :blank, { message: "custom" }]) do
       assert_deprecated do
-        person.errors.add_on_blank :name, message: 'custom'
+        person.errors.add_on_blank :name, message: "custom"
       end
     end
   end
@@ -426,5 +432,14 @@ class ErrorsTest < ActiveModel::TestCase
 
     assert_equal [:name], person.errors.messages.keys
     assert_equal [:name], person.errors.details.keys
+  end
+
+  test "errors are marshalable" do
+    errors = ActiveModel::Errors.new(Person.new)
+    errors.add(:name, :invalid)
+    serialized = Marshal.load(Marshal.dump(errors))
+
+    assert_equal errors.messages, serialized.messages
+    assert_equal errors.details, serialized.details
   end
 end

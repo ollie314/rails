@@ -1,4 +1,4 @@
-require 'stringio'
+require "stringio"
 
 module ActiveRecord
   # = Active Record Schema Dumper
@@ -49,10 +49,6 @@ module ActiveRecord
 
       def header(stream)
         define_params = @version ? "version: #{@version}" : ""
-
-        if stream.respond_to?(:external_encoding) && stream.external_encoding
-          stream.puts "# encoding: #{stream.external_encoding.name}"
-        end
 
         stream.puts <<HEADER
 # This file is auto-generated from the current state of the database. Instead
@@ -109,18 +105,13 @@ HEADER
           tbl = StringIO.new
 
           # first dump primary key column
-          if @connection.respond_to?(:primary_keys)
-            pk = @connection.primary_keys(table)
-            pk = pk.first unless pk.size > 1
-          else
-            pk = @connection.primary_key(table)
-          end
+          pk = @connection.primary_key(table)
 
           tbl.print "  create_table #{remove_prefix_and_suffix(table).inspect}"
 
           case pk
           when String
-            tbl.print ", primary_key: #{pk.inspect}" unless pk == 'id'
+            tbl.print ", primary_key: #{pk.inspect}" unless pk == "id"
             pkcol = columns.detect { |c| c.name == pk }
             pkcolspec = @connection.column_spec_for_primary_key(pkcol)
             if pkcolspec.present?
@@ -136,10 +127,10 @@ HEADER
           tbl.print ", force: :cascade"
 
           table_options = @connection.table_options(table)
-          tbl.print ", options: #{table_options.inspect}" unless table_options.blank?
-
-          if comment = @connection.table_comment(table).presence
-            tbl.print ", comment: #{comment.inspect}"
+          if table_options.present?
+            table_options.each do |key, value|
+              tbl.print ", #{key}: #{value.inspect}" if value.present?
+            end
           end
 
           tbl.puts " do |t|"
@@ -154,29 +145,9 @@ HEADER
           # find all migration keys used in this table
           keys = @connection.migration_keys
 
-          # figure out the lengths for each column based on above keys
-          lengths = keys.map { |key|
-            column_specs.map { |spec|
-              spec[key] ? spec[key].length + 2 : 0
-            }.max
-          }
-
-          # the string we're going to sprintf our values against, with standardized column widths
-          format_string = lengths.map{ |len| "%-#{len}s" }
-
-          # find the max length for the 'type' column, which is special
-          type_length = column_specs.map{ |column| column[:type].length }.max
-
-          # add column type definition to our format string
-          format_string.unshift "    t.%-#{type_length}s "
-
-          format_string *= ''
-
           column_specs.each do |colspec|
-            values = keys.zip(lengths).map{ |key, len| colspec.key?(key) ? colspec[key] + ", " : " " * len }
-            values.unshift colspec[:type]
-            tbl.print((format_string % values).gsub(/,\s*$/, ''))
-            tbl.puts
+            values = keys.map { |key| colspec[key] }.compact
+            tbl.puts "    t.#{colspec[:type]} #{values.join(", ")}"
           end
 
           indexes_in_create(table, tbl)
@@ -222,7 +193,7 @@ HEADER
           index.columns.inspect,
           "name: #{index.name.inspect}",
         ]
-        index_parts << 'unique: true' if index.unique
+        index_parts << "unique: true" if index.unique
 
         index_lengths = (index.lengths || []).compact
         index_parts << "length: #{Hash[index.columns.zip(index.lengths)].inspect}" if index_lengths.any?

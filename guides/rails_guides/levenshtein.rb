@@ -1,8 +1,10 @@
 module RailsGuides
   module Levenshtein
-    # This code is based directly on the Text gem implementation
+    # This code is based directly on the Text gem implementation.
+    # Copyright (c) 2006-2013 Paul Battley, Michael Neumann, Tim Fletcher.
+    #
     # Returns a value representing the "cost" of transforming str1 into str2
-    def self.distance str1, str2
+    def self.distance(str1, str2)
       s = str1
       t = str2
       n = s.length

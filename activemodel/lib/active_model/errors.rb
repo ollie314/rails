@@ -1,7 +1,7 @@
-require 'active_support/core_ext/array/conversions'
-require 'active_support/core_ext/string/inflections'
-require 'active_support/core_ext/object/deep_dup'
-require 'active_support/core_ext/string/filters'
+require "active_support/core_ext/array/conversions"
+require "active_support/core_ext/string/inflections"
+require "active_support/core_ext/object/deep_dup"
+require "active_support/core_ext/string/filters"
 
 module ActiveModel
   # == Active \Model \Errors
@@ -71,8 +71,8 @@ module ActiveModel
     #   end
     def initialize(base)
       @base     = base
-      @messages = Hash.new { |messages, attribute| messages[attribute] = [] }
-      @details  = Hash.new { |details, attribute| details[attribute] = [] }
+      @messages = apply_default_array({})
+      @details = apply_default_array({})
     end
 
     def initialize_dup(other) # :nodoc:
@@ -147,9 +147,9 @@ module ActiveModel
 
     # Delete messages for +key+. Returns the deleted messages.
     #
-    #   person.errors[:name]    # => ["cannot be nil"]
+    #   person.errors[:name]        # => ["cannot be nil"]
     #   person.errors.delete(:name) # => ["cannot be nil"]
-    #   person.errors[:name]    # => []
+    #   person.errors[:name]        # => []
     def delete(key)
       details.delete(key)
       messages.delete(key)
@@ -276,11 +276,11 @@ module ActiveModel
     #   person.errors.to_hash(true) # => {:name=>["name cannot be nil"]}
     def to_hash(full_messages = false)
       if full_messages
-        self.messages.each_with_object({}) do |(attribute, array), messages|
+        messages.each_with_object({}) do |(attribute, array), messages|
           messages[attribute] = array.map { |message| full_message(attribute, message) }
         end
       else
-        self.messages.dup
+        messages.dup
       end
     end
 
@@ -372,7 +372,7 @@ module ActiveModel
 
         To achieve the same use:
 
-          errors.add(attribute, :empty, options) if value.blank?
+          errors.add(attribute, :blank, options) if value.blank?
       MESSAGE
 
       Array(attributes).each do |attribute|
@@ -382,10 +382,21 @@ module ActiveModel
     end
 
     # Returns +true+ if an error on the attribute with the given message is
-    # present, +false+ otherwise. +message+ is treated the same as for +add+.
+    # present, or +false+ otherwise. +message+ is treated the same as for +add+.
     #
     #   person.errors.add :name, :blank
-    #   person.errors.added? :name, :blank # => true
+    #   person.errors.added? :name, :blank           # => true
+    #   person.errors.added? :name, "can't be blank" # => true
+    #
+    # If the error message requires an option, then it returns +true+ with
+    # the correct option, or +false+ with an incorrect or missing option.
+    #
+    #  person.errors.add :name, :too_long, { count: 25 }
+    #  person.errors.added? :name, :too_long, count: 25                     # => true
+    #  person.errors.added? :name, "is too long (maximum is 25 characters)" # => true
+    #  person.errors.added? :name, :too_long, count: 24                     # => false
+    #  person.errors.added? :name, :too_long                                # => false
+    #  person.errors.added? :name, "is too long"                            # => false
     def added?(attribute, message = :invalid, options = {})
       message = message.call if message.respond_to?(:call)
       message = normalize_message(attribute, message, options)
@@ -426,13 +437,12 @@ module ActiveModel
     #   person.errors.full_message(:name, 'is invalid') # => "Name is invalid"
     def full_message(attribute, message)
       return message if attribute == :base
-      attr_name = attribute.to_s.tr('.', '_').humanize
+      attr_name = attribute.to_s.tr(".", "_").humanize
       attr_name = @base.class.human_attribute_name(attribute, default: attr_name)
-      I18n.t(:"errors.format", {
+      I18n.t(:"errors.format",
         default:  "%{attribute} %{message}",
         attribute: attr_name,
-        message:   message
-      })
+        message:   message)
     end
 
     # Translates an error message in its default scope
@@ -493,6 +503,16 @@ module ActiveModel
       I18n.translate(key, options)
     end
 
+    def marshal_dump
+      [@base, without_default_proc(@messages), without_default_proc(@details)]
+    end
+
+    def marshal_load(array)
+      @base, @messages, @details = array
+      apply_default_array(@messages)
+      apply_default_array(@details)
+    end
+
   private
     def normalize_message(attribute, message, options)
       case message
@@ -505,6 +525,17 @@ module ActiveModel
 
     def normalize_detail(message, options)
       { error: message }.merge(options.except(*CALLBACKS_OPTIONS + MESSAGE_OPTIONS))
+    end
+
+    def without_default_proc(hash)
+      hash.dup.tap do |new_h|
+        new_h.default_proc = nil
+      end
+    end
+
+    def apply_default_array(hash)
+      hash.default_proc = proc { |h, key| h[key] = [] }
+      hash
     end
   end
 

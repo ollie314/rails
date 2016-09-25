@@ -1,9 +1,8 @@
-require 'active_support/core_ext/array/extract_options'
-require 'active_support/core_ext/hash/keys'
-require 'active_support/core_ext/hash/except'
+require "active_support/core_ext/array/extract_options"
+require "active_support/core_ext/hash/keys"
+require "active_support/core_ext/hash/except"
 
 module ActiveModel
-
   # == Active \Model \Validations
   #
   # Provides a full validation framework to your objects.
@@ -303,8 +302,6 @@ module ActiveModel
 
     # Runs all the specified validations and returns +true+ if no errors were
     # added otherwise +false+.
-    #
-    # Aliased as validate.
     #
     #   class Person
     #     include ActiveModel::Validations

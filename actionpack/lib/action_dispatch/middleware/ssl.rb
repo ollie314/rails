@@ -18,17 +18,18 @@ module ActionDispatch
   #      Enabled by default. Configure `config.ssl_options` with `hsts: false` to disable.
   #
   # Set `config.ssl_options` with `hsts: { … }` to configure HSTS:
-  #   * `expires`: How long, in seconds, these settings will stick. Defaults to
-  #     `180.days` (recommended). The minimum required to qualify for browser
-  #     preload lists is `18.weeks`.
+  #   * `expires`: How long, in seconds, these settings will stick. The minimum
+  #     required to qualify for browser preload lists is `18.weeks`. Defaults to
+  #     `180.days` (recommended).
   #   * `subdomains`: Set to `true` to tell the browser to apply these settings
   #     to all subdomains. This protects your cookies from interception by a
-  #     vulnerable site on a subdomain. Defaults to `true`.
+  #     vulnerable site on a subdomain. Defaults to `false`.
   #   * `preload`: Advertise that this site may be included in browsers'
   #     preloaded HSTS lists. HSTS protects your site on every visit *except the
   #     first visit* since it hasn't seen your HSTS header yet. To close this
   #     gap, browser vendors include a baked-in list of HSTS-enabled sites.
   #     Go to https://hstspreload.appspot.com to submit your site for inclusion.
+  #     Defaults to `false`.
   #
   # To turn off HSTS, omitting the header is not enough. Browsers will remember the
   # original HSTS directive until it expires. Instead, use the header to tell browsers to
@@ -92,7 +93,7 @@ module ActionDispatch
 
     private
       def set_hsts_header!(headers)
-        headers['Strict-Transport-Security'.freeze] ||= @hsts_header
+        headers["Strict-Transport-Security".freeze] ||= @hsts_header
       end
 
       def normalize_hsts_options(options)
@@ -118,10 +119,10 @@ module ActionDispatch
       end
 
       def flag_cookies_as_secure!(headers)
-        if cookies = headers['Set-Cookie'.freeze]
+        if cookies = headers["Set-Cookie".freeze]
           cookies = cookies.split("\n".freeze)
 
-          headers['Set-Cookie'.freeze] = cookies.map { |cookie|
+          headers["Set-Cookie".freeze] = cookies.map { |cookie|
             if cookie !~ /;\s*secure\s*(;|$)/i
               "#{cookie}; secure"
             else
@@ -132,10 +133,18 @@ module ActionDispatch
       end
 
       def redirect_to_https(request)
-        [ @redirect.fetch(:status, 301),
-          { 'Content-Type' => 'text/html',
-            'Location' => https_location_for(request) },
+        [ @redirect.fetch(:status, redirection_status(request)),
+          { "Content-Type" => "text/html",
+            "Location" => https_location_for(request) },
           @redirect.fetch(:body, []) ]
+      end
+
+      def redirection_status(request)
+        if request.get? || request.head?
+          301 # Issue a permanent redirect via a GET request.
+        else
+          307 # Issue a fresh request redirect to preserve the HTTP method.
+        end
       end
 
       def https_location_for(request)

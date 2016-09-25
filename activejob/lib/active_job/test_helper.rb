@@ -1,5 +1,5 @@
-require 'active_support/core_ext/class/subclasses'
-require 'active_support/core_ext/hash/keys'
+require "active_support/core_ext/class/subclasses"
+require "active_support/core_ext/hash/keys"
 
 module ActiveJob
   # Provides helper methods for testing Active Job
@@ -9,9 +9,9 @@ module ActiveJob
       to: :queue_adapter
 
     def before_setup # :nodoc:
-      test_adapter = ActiveJob::QueueAdapters::TestAdapter.new
+      test_adapter = queue_adapter_for_test
 
-      @old_queue_adapters = (ActiveJob::Base.subclasses << ActiveJob::Base).select do |klass|
+      @old_queue_adapters = (ActiveJob::Base.descendants << ActiveJob::Base).select do |klass|
         # only override explicitly set adapters, a quirk of `class_attribute`
         klass.singleton_class.public_instance_methods(false).include?(:_queue_adapter)
       end.map do |klass|
@@ -30,6 +30,19 @@ module ActiveJob
       @old_queue_adapters.each do |(klass, adapter)|
         klass.queue_adapter = adapter
       end
+    end
+
+    # Specifies the queue adapter to use with all active job test helpers.
+    #
+    # Returns an instance of the queue adapter and defaults to
+    # <tt>ActiveJob::QueueAdapters::TestAdapter</tt>.
+    #
+    # Note: The adapter provided by this method must provide some additional
+    # methods from those expected of a standard <tt>ActiveJob::QueueAdapter</tt>
+    # in order to be used with the active job test helpers. Refer to
+    # <tt>ActiveJob::QueueAdapters::TestAdapter</tt>.
+    def queue_adapter_for_test
+      ActiveJob::QueueAdapters::TestAdapter.new
     end
 
     # Asserts that the number of enqueued jobs matches the given number.

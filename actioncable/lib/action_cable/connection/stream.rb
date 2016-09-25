@@ -1,3 +1,5 @@
+require "thread"
+
 module ActionCable
   module Connection
     #--
@@ -8,9 +10,10 @@ module ActionCable
       def initialize(event_loop, socket)
         @event_loop    = event_loop
         @socket_object = socket
-        @stream_send   = socket.env['stream.send']
+        @stream_send   = socket.env["stream.send"]
 
         @rack_hijack_io = nil
+        @write_lock = Mutex.new
       end
 
       def each(&callback)
@@ -27,8 +30,10 @@ module ActionCable
       end
 
       def write(data)
-        return @rack_hijack_io.write(data) if @rack_hijack_io
-        return @stream_send.call(data) if @stream_send
+        @write_lock.synchronize do
+          return @rack_hijack_io.write(data) if @rack_hijack_io
+          return @stream_send.call(data) if @stream_send
+        end
       rescue EOFError, Errno::ECONNRESET
         @socket_object.client_gone
       end
@@ -38,10 +43,10 @@ module ActionCable
       end
 
       def hijack_rack_socket
-        return unless @socket_object.env['rack.hijack']
+        return unless @socket_object.env["rack.hijack"]
 
-        @socket_object.env['rack.hijack'].call
-        @rack_hijack_io = @socket_object.env['rack.hijack_io']
+        @socket_object.env["rack.hijack"].call
+        @rack_hijack_io = @socket_object.env["rack.hijack_io"]
 
         @event_loop.attach(@rack_hijack_io, self)
       end
@@ -50,6 +55,7 @@ module ActionCable
         def clean_rack_hijack
           return unless @rack_hijack_io
           @event_loop.detach(@rack_hijack_io, self)
+          @rack_hijack_io.close
           @rack_hijack_io = nil
         end
     end

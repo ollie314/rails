@@ -63,10 +63,10 @@ module ActiveRecord
       #
       # See <tt>ActiveRecord::Inheritance#discriminate_class_for_record</tt> to see
       # how this "single-table" inheritance mapping is implemented.
-      def instantiate(attributes, column_types = {})
+      def instantiate(attributes, column_types = {}, &block)
         klass = discriminate_class_for_record(attributes)
         attributes = klass.attributes_builder.build_from_database(attributes, column_types)
-        klass.allocate.init_with('attributes' => attributes, 'new_record' => false)
+        klass.allocate.init_with("attributes" => attributes, "new_record" => false, &block)
       end
 
       private
@@ -178,7 +178,7 @@ module ActiveRecord
     # and #destroy returns +false+.
     # See ActiveRecord::Callbacks for further details.
     def destroy
-      raise ReadOnlyRecord, "#{self.class} is marked as readonly" if readonly?
+      _raise_readonly_record_error if readonly?
       destroy_associations
       self.class.connection.add_transaction_record(self)
       destroy_row if persisted?
@@ -252,7 +252,8 @@ module ActiveRecord
       name = name.to_s
       verify_readonly_attribute(name)
       public_send("#{name}=", value)
-      save(validate: false) if changed?
+
+      changed? ? save(validate: false) : true
     end
 
     # Updates the attributes of the model from the passed-in hash and saves the
@@ -439,7 +440,7 @@ module ActiveRecord
           self.class.unscoped { self.class.find(id) }
         end
 
-      @attributes = fresh_object.instance_variable_get('@attributes')
+      @attributes = fresh_object.instance_variable_get("@attributes")
       @new_record = false
       self
     end
@@ -479,7 +480,12 @@ module ActiveRecord
     #   ball.touch(:updated_at)   # => raises ActiveRecordError
     #
     def touch(*names, time: nil)
-      raise ActiveRecordError, "cannot touch on a new record object" unless persisted?
+      unless persisted?
+        raise ActiveRecordError, <<-MSG.squish
+          cannot touch on a new or destroyed record object. Consider using
+          persisted?, new_record?, or destroyed? before touching
+        MSG
+      end
 
       time ||= current_time_from_proper_timezone
       attributes = timestamp_attributes_for_update_in_model
@@ -493,7 +499,6 @@ module ActiveRecord
           changes[column] = write_attribute(column, time)
         end
 
-        clear_attribute_changes(changes.keys)
         primary_key = self.class.primary_key
         scope = self.class.unscoped.where(primary_key => _read_attribute(primary_key))
 
@@ -503,6 +508,7 @@ module ActiveRecord
           changes[locking_column] = increment_lock
         end
 
+        clear_attribute_changes(changes.keys)
         result = scope.update_all(changes) == 1
 
         if !result && locking_enabled?
@@ -530,7 +536,7 @@ module ActiveRecord
     end
 
     def create_or_update(*args)
-      raise ReadOnlyRecord, "#{self.class} is marked as readonly" if readonly?
+      _raise_readonly_record_error if readonly?
       result = new_record? ? _create_record : _update_record(*args)
       result != false
     end
@@ -571,6 +577,10 @@ module ActiveRecord
 
     def belongs_to_touch_method
       :touch
+    end
+
+    def _raise_readonly_record_error
+      raise ReadOnlyRecord, "#{self.class} is marked as readonly"
     end
   end
 end

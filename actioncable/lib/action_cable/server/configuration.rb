@@ -8,28 +8,20 @@ module ActionCable
       attr_accessor :disable_request_forgery_protection, :allowed_request_origins
       attr_accessor :cable, :url, :mount_path
 
-      attr_accessor :channel_paths # :nodoc:
-
       def initialize
         @log_tags = []
 
-        @connection_class = ActionCable::Connection::Base
+        @connection_class = -> { ActionCable::Connection::Base }
         @worker_pool_size = 4
 
         @disable_request_forgery_protection = false
-      end
-
-      def channel_class_names
-        @channel_class_names ||= channel_paths.collect do |channel_path|
-          Pathname.new(channel_path).basename.to_s.split('.').first.camelize
-        end
       end
 
       # Returns constant of subscription adapter specified in config/cable.yml.
       # If the adapter cannot be found, this will default to the Redis adapter.
       # Also makes sure proper dependencies are required.
       def pubsub_adapter
-        adapter = (cable.fetch('adapter') { 'redis' })
+        adapter = (cable.fetch("adapter") { "redis" })
         path_to_adapter = "action_cable/subscription_adapter/#{adapter}"
         begin
           require path_to_adapter
@@ -40,7 +32,7 @@ module ActionCable
         end
 
         adapter = adapter.camelize
-        adapter = 'PostgreSQL' if adapter == 'Postgresql'
+        adapter = "PostgreSQL" if adapter == "Postgresql"
         "ActionCable::SubscriptionAdapter::#{adapter}".constantize
       end
 

@@ -1,4 +1,4 @@
-require 'active_support/core_ext/hash'
+require "active_support/core_ext/hash"
 
 module ActiveJob
   # Raised when an exception is raised during job arguments deserialization.
@@ -24,7 +24,7 @@ module ActiveJob
   end
 
   # Raised when an unsupported argument type is set as a job argument. We
-  # currently support NilClass, Fixnum, Float, String, TrueClass, FalseClass,
+  # currently support NilClass, Integer, Fixnum, Float, String, TrueClass, FalseClass,
   # Bignum, BigDecimal, and objects that can be represented as GlobalIDs (ex: Active Record).
   # Raised if you set the key for a Hash something else than a string or
   # a symbol. Also raised when trying to serialize an object which can't be
@@ -34,7 +34,8 @@ module ActiveJob
   module Arguments
     extend self
     # :nodoc:
-    TYPE_WHITELIST = [ NilClass, Fixnum, Float, String, TrueClass, FalseClass, Bignum, BigDecimal ]
+    # Calls #uniq since Integer, Fixnum, and Bignum are all the same class on Ruby 2.4+
+    TYPE_WHITELIST = [ NilClass, String, Integer, Fixnum, Bignum, Float, BigDecimal, TrueClass, FalseClass ].uniq
 
     # Serializes a set of arguments. Whitelisted types are returned
     # as-is. Arrays/Hashes are serialized element by element.
@@ -54,11 +55,11 @@ module ActiveJob
 
     private
       # :nodoc:
-      GLOBALID_KEY = '_aj_globalid'.freeze
+      GLOBALID_KEY = "_aj_globalid".freeze
       # :nodoc:
-      SYMBOL_KEYS_KEY = '_aj_symbol_keys'.freeze
+      SYMBOL_KEYS_KEY = "_aj_symbol_keys".freeze
       # :nodoc:
-      WITH_INDIFFERENT_ACCESS_KEY = '_aj_hash_with_indifferent_access'.freeze
+      WITH_INDIFFERENT_ACCESS_KEY = "_aj_hash_with_indifferent_access".freeze
       private_constant :GLOBALID_KEY, :SYMBOL_KEYS_KEY, :WITH_INDIFFERENT_ACCESS_KEY
 
       def serialize_argument(argument)
@@ -103,7 +104,7 @@ module ActiveJob
       end
 
       def serialized_global_id?(hash)
-        hash.size == 1 and hash.include?(GLOBALID_KEY)
+        hash.size == 1 && hash.include?(GLOBALID_KEY)
       end
 
       def deserialize_global_id(hash)
